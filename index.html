@@ -16,6 +16,76 @@
             <br><br>
             We'll be back soon...
         </p>
+        
+        <!-- Plain Google Authentication Elements -->
+        <div style="margin-top: 40px;">
+            <button id="loginBtn" style="display: none; padding: 8px 16px; cursor: pointer;">Sign in with Google</button>
+            <button id="logoutBtn" style="display: none; padding: 8px 16px; cursor: pointer;">Sign Out</button>
+            <div id="userStatus" style="margin-top: 15px; font-family: sans-serif; font-size: 14px; color: #555;">Connecting to authentication services...</div>
+        </div>
     </div>
+
+    <!-- Firebase App and Auth SDK Modules -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+
+        // Your Firebase configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyCI2nv6NIGU7P9n0cV5sMOvTHAcbDJurmQ",
+            authDomain: "vovatube-41e7e.firebaseapp.com",
+            projectId: "vovatube-41e7e",
+            storageBucket: "vovatube-41e7e.firebasestorage.app",
+            messagingSenderId: "988486339970",
+            appId: "1:988486339970:web:3d2fbafbbe133b07da139b",
+            measurementId: "G-H5576P4Q9W"
+        };
+
+        // Initialize Firebase
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const provider = new GoogleAuthProvider();
+
+        const loginBtn = document.getElementById('loginBtn');
+        const logoutBtn = document.getElementById('logoutBtn');
+        const userStatus = document.getElementById('userStatus');
+
+        // Handle Google Sign In
+        loginBtn.addEventListener('click', () => {
+            userStatus.textContent = "Signing in...";
+            signInWithPopup(auth, provider)
+                .then((result) => {
+                    // Sign-in successful
+                    userStatus.textContent = "Welcome, " + result.user.displayName;
+                }).catch((error) => {
+                    // Handle Errors
+                    userStatus.textContent = "Error signing in: " + error.message;
+                });
+        });
+
+        // Handle Sign Out
+        logoutBtn.addEventListener('click', () => {
+            signOut(auth).then(() => {
+                userStatus.textContent = "Signed out successfully.";
+            }).catch((error) => {
+                userStatus.textContent = "Error signing out: " + error.message;
+            });
+        });
+
+        // Monitor Authentication State
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                // User is signed in
+                userStatus.textContent = "Logged in as: " + user.displayName + " (" + user.email + ")";
+                loginBtn.style.display = 'none';
+                logoutBtn.style.display = 'inline-block';
+            } else {
+                // User is signed out
+                userStatus.textContent = "";
+                loginBtn.style.display = 'inline-block';
+                logoutBtn.style.display = 'none';
+            }
+        });
+    </script>
 </body>
 </html>
