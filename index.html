@@ -502,16 +502,32 @@
         );
 
         // Rule 3: Auth Before Queries - authenticate anonymously
-        const authPromise = signInAnonymously(auth);
-        await Promise.race([authPromise, timeoutPromise]);
+        try {
+          const authPromise = signInAnonymously(auth);
+          await Promise.race([authPromise, timeoutPromise]);
+        } catch (authError) {
+          // If auth is reached but restricted/disabled in console, Firebase is still online!
+          if (authError.code && authError.code !== 'auth/network-request-failed') {
+            logoImg.src = "asset/vovatubebetafulllogo.png";
+            return;
+          }
+          throw authError;
+        }
 
-        // Query a dummy node to verify reachability
-        const dummyDocRef = doc(db, 'artifacts', 'vovatube-41e7e', 'public', 'data', 'connectivityCheck', 'status');
-        const readPromise = getDoc(dummyDocRef);
-        await Promise.race([readPromise, timeoutPromise]);
-
-        // Database successfully reached
-        logoImg.src = "asset/vovatubebetafulllogo.png";
+        // Query metadata to verify Firestore reachability
+        try {
+          const dummyDocRef = doc(db, 'artifacts', 'vovatube-41e7e', 'public', 'data', 'connectivityCheck', 'status');
+          const readPromise = getDoc(dummyDocRef);
+          await Promise.race([readPromise, timeoutPromise]);
+          logoImg.src = "asset/vovatubebetafulllogo.png";
+        } catch (dbError) {
+          // If the database responds with a security error, it is still online and reachable!
+          if (dbError.code && dbError.code !== 'unavailable' && dbError.code !== 'deadline-exceeded') {
+            logoImg.src = "asset/vovatubebetafulllogo.png";
+          } else {
+            logoImg.src = "asset/firebasedownfulllogo.png";
+          }
+        }
       } catch (error) {
         // Fallback to offline logo if database is unreachable or configuration fails
         logoImg.src = "asset/firebasedownfulllogo.png";
