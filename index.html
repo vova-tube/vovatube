@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>VovaTube</title>
+  <title>Retro Header Recreation</title>
   <!-- Custom favicon from the same directory as index.html -->
   <link rel="icon" type="image/x-icon" href="favicon.ico">
   <style>
@@ -327,7 +327,7 @@
       <!-- Bigger Logo section -->
       <div class="logo-container">
         <a href="#" onclick="navigateTo('home', event)">
-          <img src="asset/vovatubebetafulllogo.png" id="logoImg" alt="Logo" class="logo-image">
+          <img src="asset/vovatubebeta.png" alt="Logo" class="logo-image">
         </a>
       </div>
 
@@ -471,71 +471,6 @@
     <!-- Simulated Page Content Area (Rendered immediately below header) -->
     <div id="contentArea"></div>
   </div>
-
-  <!-- Firebase Scripts Core SDK Initialization & Reachability Check -->
-  <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-    import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-    import { getFirestore, doc, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-
-    const firebaseConfig = {
-      apiKey: "AIzaSyCI2nv6NIGU7P9n0cV5sMOvTHAcbDJurmQ",
-      authDomain: "vovatube-41e7e.firebaseapp.com",
-      projectId: "vovatube-41e7e",
-      storageBucket: "vovatube-41e7e.firebasestorage.app",
-      messagingSenderId: "988486339970",
-      appId: "1:988486339970:web:3d2fbafbbe133b07da139b",
-      measurementId: "G-H5576P4Q9W"
-    };
-
-    const logoImg = document.getElementById("logoImg");
-
-    async function checkFirebaseConnectivity() {
-      try {
-        const app = initializeApp(firebaseConfig);
-        const auth = getAuth(app);
-        const db = getFirestore(app);
-
-        // Define a 5-second timeout for the connection verification
-        const timeoutPromise = new Promise((_, reject) => 
-          setTimeout(() => reject(new Error("Connection timed out")), 5000)
-        );
-
-        // Rule 3: Auth Before Queries - authenticate anonymously
-        try {
-          const authPromise = signInAnonymously(auth);
-          await Promise.race([authPromise, timeoutPromise]);
-        } catch (authError) {
-          // If auth is reached but restricted/disabled in console, Firebase is still online!
-          if (authError.code && authError.code !== 'auth/network-request-failed') {
-            logoImg.src = "asset/vovatubebetafulllogo.png";
-            return;
-          }
-          throw authError;
-        }
-
-        // Query metadata to verify Firestore reachability
-        try {
-          const dummyDocRef = doc(db, 'artifacts', 'vovatube-41e7e', 'public', 'data', 'connectivityCheck', 'status');
-          const readPromise = getDoc(dummyDocRef);
-          await Promise.race([readPromise, timeoutPromise]);
-          logoImg.src = "asset/vovatubebetafulllogo.png";
-        } catch (dbError) {
-          // If the database responds with a security error, it is still online and reachable!
-          if (dbError.code && dbError.code !== 'unavailable' && dbError.code !== 'deadline-exceeded') {
-            logoImg.src = "asset/vovatubebetafulllogo.png";
-          } else {
-            logoImg.src = "asset/firebasedownfulllogo.png";
-          }
-        }
-      } catch (error) {
-        // Fallback to offline logo if database is unreachable or configuration fails
-        logoImg.src = "asset/firebasedownfulllogo.png";
-      }
-    }
-
-    checkFirebaseConnectivity();
-  </script>
 
   <script>
     // Holds the captured inner HTML of the subnav element
