@@ -5,11 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>VovaTube</title>
   <!-- Custom favicon from the same directory as index.html -->
-  <link rel="icon" type="image/x-icon" href="favicon.ico">
+  <link class="js-favicon" rel="icon" type="image/x-icon" href="favicon.ico">
   
-  <!-- Firebase Compat SDKs for web app authentication -->
+  <!-- Firebase Compat SDKs for web app authentication & database storage -->
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
 
   <style>
     /* Reset and Top-Center Alignment */
@@ -492,6 +493,8 @@
 
     firebase.initializeApp(firebaseConfig);
     const auth = firebase.auth();
+    const db = firebase.firestore();
+    const appId = "vovatube-41e7e";
 
     // Holds the captured inner HTML of the subnav element
     let originalSubNavHTML = '';
@@ -532,14 +535,14 @@
       });
     }
 
-    // Handles the Dynamic Auth UI State Update in the top header links row
-    function updateHeaderUI(user) {
+    // Handles the Dynamic Auth UI State Update in the top header links row (accepts manual override username to bypass Firebase sync lag)
+    function updateHeaderUI(user, overrideName) {
       const headerLinksRow = document.getElementById('headerLinksRow');
       if (!headerLinksRow) return;
 
       if (user) {
         // User logged in: Shows bold "Hello," followed by username, log-in and sign-up are removed.
-        const displayName = user.displayName || "User";
+        const displayName = overrideName || user.displayName || "User";
         headerLinksRow.innerHTML = `
           <strong>Hello,</strong> ${displayName}
           <span class="link-separator">|</span>
@@ -572,7 +575,7 @@
       updateHeaderUI(user);
     });
 
-    // Handles user signup process through Firebase Email/Password Authentication
+    // Handles user signup process through Firebase Email/Password Authentication & saves profile info in Firestore
     window.handleSignUpSubmit = function(event) {
       event.preventDefault();
 
@@ -581,26 +584,96 @@
       const username = form.username.value;
       const password = form.password.value;
       const confirmPassword = form.confirm_password.value;
+      const country = form.country.value;
+      const gender = form.gender.value;
+      const birthday_mon = form.birthday_mon.value;
+      const birthday_day = form.birthday_day.value;
+      const birthday_yr = form.birthday_yr.value;
 
+      const feedback = document.getElementById('signupFeedback');
+      if (feedback) feedback.innerText = "";
+
+      // Validate Country Selection
+      if (country === "---" || !country) {
+        if (feedback) feedback.innerText = "Please select a valid country.";
+        return;
+      }
+
+      // Validate Gender Selection
+      if (!gender) {
+        if (feedback) feedback.innerText = "Please select your gender.";
+        return;
+      }
+
+      // Validate Date of Birth Selection
+      if (birthday_mon === "---" || birthday_day === "---" || birthday_yr === "---" || !birthday_mon || !birthday_day || !birthday_yr) {
+        if (feedback) feedback.innerText = "Please select a valid month, day, and year for your birth date.";
+        return;
+      }
+
+      // Validate Password Match
       if (password !== confirmPassword) {
-        alert("Passwords do not match!");
+        if (feedback) feedback.innerText = "Passwords do not match!";
         return;
       }
 
       // Create Firebase Auth credentials
       auth.createUserWithEmailAndPassword(email, password)
         .then((userCredential) => {
+          const user = userCredential.user;
           // Set user's username as display name inside Firebase Profile update
-          return userCredential.user.updateProfile({
+          return user.updateProfile({
             displayName: username
-          });
+          }).then(() => user);
         })
-        .then(() => {
+        .then((user) => {
+          // Rule 1 Private Data Path: /artifacts/{appId}/users/{userId}/{collectionName}
+          return db.collection('artifacts').doc(appId)
+            .collection('users').doc(user.uid)
+            .collection('profile').doc('details').set({
+              username: username,
+              email: email,
+              country: country,
+              gender: gender,
+              birthMonth: birthday_mon,
+              birthDay: birthday_day,
+              birthYear: birthday_yr,
+              signupTimestamp: firebase.firestore.FieldValue.serverTimestamp()
+            }).then(() => user);
+        })
+        .then((user) => {
+          // Instantly force UI update with the new username to prevent delay
+          updateHeaderUI(user, username);
           // Navigate to Home upon successful account setup
           navigateTo('home');
         })
         .catch((error) => {
-          alert("Error creating account: " + error.message);
+          if (feedback) {
+            feedback.innerText = "Error creating account: " + error.message;
+          }
+        });
+    };
+
+    // Handles user login submission
+    window.handleLoginSubmit = function(event) {
+      event.preventDefault();
+
+      const form = event.target;
+      const email = form.email.value;
+      const password = form.password.value;
+      const feedback = document.getElementById('loginFeedback');
+      if (feedback) feedback.innerText = "";
+
+      auth.signInWithEmailAndPassword(email, password)
+        .then((userCredential) => {
+          // Instantly update UI with user info upon success
+          updateHeaderUI(userCredential.user);
+          navigateTo('home');
+        })
+        .catch((error) => {
+          if (feedback) {
+            feedback.innerText = "Error logging in: " + error.message;
+          }
         });
     };
 
@@ -612,7 +685,7 @@
           navigateTo('home');
         })
         .catch((error) => {
-          alert("Error logging out: " + error.message);
+          console.error("Error logging out:", error);
         });
     };
 
@@ -641,8 +714,7 @@
         'mygroups', 
         'mychannel',
         'groups',
-        'categories',
-        'login'
+        'categories'
       ];
 
       // List of sub-navigation pages
@@ -658,7 +730,7 @@
       ];
 
       // Handle the state of the sub navigation bar buttons
-      if (page === 'upload' || page === 'signup') {
+      if (page === 'upload' || page === 'signup' || page === 'login') {
         // Just make it a plain gray strip by setting it to a non-breaking space
         subNavDiv.innerHTML = '&nbsp;';
       } else {
@@ -681,10 +753,40 @@
       } else if (page === 'help') {
         // Renders just the header "Help Center"
         contentArea.innerHTML = '<h1>Help Center</h1>';
+      } else if (page === 'login') {
+        // Renders retro unstyled login form matching user font preferences
+        contentArea.innerHTML = `
+          <div style="font-family: 'Times New Roman', Times, serif; padding-top: 20px;">
+            <div id="loginFeedback" style="color: red; font-size: 13px; margin-bottom: 10px;"></div>
+            <form onsubmit="handleLoginSubmit(event)">
+              <table border="0" cellpadding="3" cellspacing="0">
+                <tr>
+                  <td>Email Address:</td>
+                  <td><input type="email" name="email" required></td>
+                </tr>
+                <tr>
+                  <td>Password:</td>
+                  <td><input type="password" name="password" required></td>
+                </tr>
+                <tr>
+                  <td></td>
+                  <td><input type="submit" value="Log In"></td>
+                </tr>
+              </table>
+            </form>
+          </div>
+        `;
       } else if (page === 'signup') {
+        // Dynamically build birth year select dropdown range starting from 2026 down to 1920
+        let yearOptions = '<option value="---">---</option>';
+        for (let yr = 2026; yr >= 1920; yr--) {
+          yearOptions += `<option value="${yr}">${yr}</option>`;
+        }
+
         // Renders basic, unstyled plain HTML Sign Up form using standard layout structure (with browser default serif font and no custom h1 header)
         contentArea.innerHTML = `
           <div style="font-family: 'Times New Roman', Times, serif; padding-top: 20px;">
+            <div id="signupFeedback" style="color: red; font-size: 13px; margin-bottom: 10px;"></div>
             <form onsubmit="handleSignUpSubmit(event)">
               <table border="0" cellpadding="3" cellspacing="0">
                 <tr>
@@ -706,8 +808,8 @@
                 <tr>
                   <td>Country:</td>
                   <td>
-                    <select name="country" tabindex="5">
-                      <option>---</option>
+                    <select name="country" tabindex="5" required>
+                      <option value="---">---</option>
                       <option value="US">United States</option>
                       <option value="AF">Afghanistan</option>
                       <option value="AL">Albania</option>
@@ -952,7 +1054,7 @@
                 <tr>
                   <td>Gender:</td>
                   <td>
-                    <input type="radio" name="gender" value="male" id="gender_m"> <label for="gender_m">Male</label>
+                    <input type="radio" name="gender" value="male" id="gender_m" required> <label for="gender_m">Male</label>
                     <input type="radio" name="gender" value="female" id="gender_f"> <label for="gender_f">Female</label>
                     <input type="radio" name="gender" value="other" id="gender_o"> <label for="gender_o">Other</label>
                   </td>
@@ -960,7 +1062,7 @@
                 <tr>
                   <td>Date of Birth:</td>
                   <td class="formFieldSmall" colspan="2">
-                    <select name="birthday_mon" tabindex="13">
+                    <select name="birthday_mon" tabindex="13" required>
                       <option value="---">---</option>
                       <option value="1"> Jan&nbsp; </option>
                       <option value="2"> Feb&nbsp; </option>
@@ -976,129 +1078,42 @@
                       <option value="12"> Dec&nbsp; </option>
                     </select>
                 
-                    <select name="birthday_day" tabindex="14">
+                    <select name="birthday_day" tabindex="14" required>
                       <option value="---">---</option>
-                      <option>1</option>
-                      <option>2</option>
-                      <option>3</option>
-                      <option>4</option>
-                      <option>5</option>
-                      <option>6</option>
-                      <option>7</option>
-                      <option>8</option>
-                      <option>9</option>
-                      <option>10</option>
-                      <option>11</option>
-                      <option>12</option>
-                      <option>13</option>
-                      <option>14</option>
-                      <option>15</option>
-                      <option>16</option>
-                      <option>17</option>
-                      <option>18</option>
-                      <option>19</option>
-                      <option>20</option>
-                      <option>21</option>
-                      <option>22</option>
-                      <option>23</option>
-                      <option>24</option>
-                      <option>25</option>
-                      <option>26</option>
-                      <option>27</option>
-                      <option>28</option>
-                      <option>29</option>
-                      <option>30</option>
-                      <option>31</option>
+                      <option value="1">1</option>
+                      <option value="2">2</option>
+                      <option value="3">3</option>
+                      <option value="4">4</option>
+                      <option value="5">5</option>
+                      <option value="6">6</option>
+                      <option value="7">7</option>
+                      <option value="8">8</option>
+                      <option value="9">9</option>
+                      <option value="10">10</option>
+                      <option value="11">11</option>
+                      <option value="12">12</option>
+                      <option value="13">13</option>
+                      <option value="14">14</option>
+                      <option value="15">15</option>
+                      <option value="16">16</option>
+                      <option value="17">17</option>
+                      <option value="18">18</option>
+                      <option value="19">19</option>
+                      <option value="20">20</option>
+                      <option value="21">21</option>
+                      <option value="22">22</option>
+                      <option value="23">23</option>
+                      <option value="24">24</option>
+                      <option value="25">25</option>
+                      <option value="26">26</option>
+                      <option value="27">27</option>
+                      <option value="28">28</option>
+                      <option value="29">29</option>
+                      <option value="30">30</option>
+                      <option value="31">31</option>
                     </select>          
-                    <select name="birthday_yr" tabindex="15">
-                      <option value="---">---</option>
-                      <option>2006</option>
-                      <option>2005</option>
-                      <option>2004</option>
-                      <option>2003</option>
-                      <option>2002</option>
-                      <option>2001</option>
-                      <option>2000</option>
-                      <option>1999</option>
-                      <option>1998</option>
-                      <option>1997</option>
-                      <option>1996</option>
-                      <option>1995</option>
-                      <option>1994</option>
-                      <option>1993</option>
-                      <option>1992</option>
-                      <option>1991</option>
-                      <option>1990</option>
-                      <option>1989</option>
-                      <option>1988</option>
-                      <option>1987</option>
-                      <option>1986</option>
-                      <option>1985</option>
-                      <option>1984</option>
-                      <option>1983</option>
-                      <option>1982</option>
-                      <option>1981</option>
-                      <option>1980</option>
-                      <option>1979</option>
-                      <option>1978</option>
-                      <option>1977</option>
-                      <option>1976</option>
-                      <option>1975</option>
-                      <option>1974</option>
-                      <option>1973</option>
-                      <option>1972</option>
-                      <option>1971</option>
-                      <option>1970</option>
-                      <option>1969</option>
-                      <option>1968</option>
-                      <option>1967</option>
-                      <option>1966</option>
-                      <option>1965</option>
-                      <option>1964</option>
-                      <option>1963</option>
-                      <option>1962</option>
-                      <option>1961</option>
-                      <option>1960</option>
-                      <option>1959</option>
-                      <option>1958</option>
-                      <option>1957</option>
-                      <option>1956</option>
-                      <option>1955</option>
-                      <option>1954</option>
-                      <option>1953</option>
-                      <option>1952</option>
-                      <option>1951</option>
-                      <option>1950</option>
-                      <option>1949</option>
-                      <option>1948</option>
-                      <option>1947</option>
-                      <option>1946</option>
-                      <option>1945</option>
-                      <option>1944</option>
-                      <option>1943</option>
-                      <option>1942</option>
-                      <option>1941</option>
-                      <option>1940</option>
-                      <option>1939</option>
-                      <option>1938</option>
-                      <option>1937</option>
-                      <option>1936</option>
-                      <option>1935</option>
-                      <option>1934</option>
-                      <option>1933</option>
-                      <option>1932</option>
-                      <option>1931</option>
-                      <option>1930</option>
-                      <option>1929</option>
-                      <option>1928</option>
-                      <option>1927</option>
-                      <option>1926</option>
-                      <option>1925</option>
-                      <option>1924</option>
-                      <option>1923</option>
-                      <option>1922</option>
-                      <option>1921</option>
-                      <option>1920</option>
+                    <select name="birthday_yr" tabindex="15" required>
+                      ${yearOptions}
                     </select>
                   </td>
                 </tr>
